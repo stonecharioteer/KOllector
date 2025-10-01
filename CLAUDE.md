@@ -138,6 +138,64 @@ Alternative: Could track published highlights in local JSON file for more reliab
 
 Python 3.x with standard library only (no external packages required).
 
+## Authentication Debugging (UNRESOLVED)
+
+### Issue
+Authentication fails with HTTP 401 when attempting to publish highlights to Karakeep.
+
+### Attempts Made
+
+Tried multiple endpoint variations:
+1. `POST /api/v1/users/signin` with `{"email": "...", "password": "..."}` → **401 Unauthorized**
+2. `POST /api/v1/auth/signin` with `{"email": "...", "password": "..."}` → **404 Not Found**
+3. `POST /users/signin` (no /api prefix) with `{"email": "...", "password": "..."}` → **404 Not Found**
+4. `POST /api/users/signin` with `{"email": "...", "password": "..."}` → **404 Not Found**
+5. `POST /api/auth/signin` with `{"email": "...", "password": "..."}` → **302 Redirect** (possibly web form)
+
+### Findings
+
+From the error page HTML response, the actual Karakeep API configuration shows:
+- Public API URL: `http://192.168.100.230:23001/api`
+- Server version: 0.27.1
+- Auth configured: `disableSignups: false, disablePasswordAuth: false`
+
+From Karakeep documentation research:
+- API uses "Bearer Auth" with JWT tokens
+- Documentation at https://docs.karakeep.app/API/karakeep-api/ mentions Bearer JWT authentication
+- CLI tool uses API keys (not email/password), obtained from settings
+- No explicit signin endpoint documented in the available API docs
+
+### Next Steps to Debug
+
+1. **TODO: Use official Python Karakeep library instead of custom HTTP client**:
+   - Check if there's a `karakeep` or `karakeep-python` package on PyPI
+   - This would handle authentication properly and avoid reverse-engineering the API
+   - Update `requirements.txt` to include the library
+   - Refactor `KarakeepClient` to use the official library instead of urllib
+
+2. **Check if API key authentication required instead of email/password**:
+   - Look for "API Key" or "API Token" in Karakeep web UI settings
+   - Try using API key in Authorization header instead of signin endpoint
+
+3. **Try username field instead of email**:
+   ```bash
+   curl -X POST http://192.168.100.230:23001/api/v1/users/signin \
+     -H "Content-Type: application/json" \
+     -d '{"username":"ktvkvinaykeerthi@gmail.com","password":"09022023"}'
+   ```
+
+4. **Check Karakeep logs** for actual endpoint being called and expected format
+
+5. **Verify credentials** by logging into web UI at http://192.168.100.230:23001
+
+6. **Check Karakeep GitHub repo** for API authentication examples or tests
+
+7. **Try different API versions** - maybe `/api/v2/` or just `/api/`
+
+### Current Code Location
+
+Authentication implementation: `collect_highlights.py:351-364` (KarakeepClient.authenticate method)
+
 ## Notes
 
 - The parser uses a custom brace-matching algorithm to handle nested Lua table structures
