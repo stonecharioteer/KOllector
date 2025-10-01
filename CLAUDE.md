@@ -33,19 +33,106 @@ The project consists of a single Python script (`collect_highlights.py`) that:
 
 - KoReader creates `.sdr` folders alongside ebooks containing `metadata.{epub|pdf}.lua` files
 - Each metadata file contains:
-  - `annotations[]`: Array of highlights with text, datetime, chapter, page number
+  - `annotations[]`: Array of highlights/bookmarks with text, datetime, chapter, page number
   - `doc_props{}`: Book metadata (title, authors, identifiers, language)
   - `partial_md5_checksum`: Unique book identifier
+
+### Annotation Types
+
+The parser classifies annotations into four types based on field presence:
+
+1. **`highlight`**: Has `color`, `drawer`, `pos0`, `pos1`, and `text` - Standard text highlight
+2. **`bookmark`**: No `color` field, has `text` (format: "in [Chapter Name]") - Location bookmark
+3. **`highlight_empty`**: Has `color` and position fields but no `text` - Empty highlight selection
+4. **`highlight_no_position`**: Has `color` but no `pos0`/`pos1` or `page` - Highlight without position data
+
+Classification logic in `collect_highlights.py:215-229`
 
 ## Usage
 
 ```bash
-# Run with defaults (~/syncthing/ebooks-highlights -> highlights.json)
-python3 collect_highlights.py
+# Collect highlights (~/syncthing/ebooks-highlights -> highlights.json)
+python3 collect_highlights.py collect
 
-# Custom paths
-python3 collect_highlights.py --base-path /path/to/highlights --output /path/to/output.json
+# Publish to Karakeep
+python3 collect_highlights.py publish
+
+# View available commands
+python3 collect_highlights.py --help
 ```
+
+The script uses a subcommand structure. Available commands:
+- `collect`: Collect and aggregate highlights from KoReader devices
+- `publish`: Publish highlights to Karakeep with automatic tagging
+
+## Karakeep Integration
+
+### Architecture
+
+The `publish` command pushes collected highlights to Karakeep:
+
+1. **Loads** highlights from JSON file (output from `collect` command)
+2. **Filters** only `highlight` type (excludes bookmarks and empty highlights)
+3. **Authenticates** with Karakeep API using Bearer token (JWT)
+4. **Resolves list name** to internal ID (accepts human-readable name or ID)
+5. **Checks duplicates** by searching for existing bookmarks with same text
+6. **Creates tags** if they don't exist (`book:Title`, `device:ID`)
+7. **Creates bookmark** with type "text" and metadata as note
+8. **Attaches tags** to bookmark
+9. **Adds to list** (default: "Book Quotes", resolved to internal ID)
+
+### Key Components
+
+- **`KarakeepClient`** (`collect_highlights.py:304-488`): HTTP client for Karakeep API
+  - `authenticate()`: Login and get JWT Bearer token
+  - `search_bookmarks(query)`: Search for existing bookmarks (duplicate detection)
+  - `get_all_tags()`: Fetch all tags as dict{name: id}
+  - `create_tag(name)`: Create new tag if doesn't exist
+  - `ensure_tag(name)`: Get or create tag using local cache
+  - `create_bookmark(text, note)`: Create text-type bookmark
+  - `attach_tags(bookmark_id, tag_ids)`: Attach multiple tags
+  - `get_all_lists()`: Fetch all lists
+  - `find_list_by_name(name)`: Find list by human-readable name (case-insensitive)
+  - `get_list(list_id)`: Get list details by ID
+  - `add_bookmark_to_list(list_id, bookmark_id)`: Add bookmark to a list
+
+- **`cmd_publish()`** (`collect_highlights.py:465-611`): Main publish logic
+  - Filters highlights by type (`highlight` only)
+  - Implements duplicate prevention via search
+  - Batch processes with progress indicators
+  - Creates metadata note in JSON format with book/chapter/page info
+
+### Karakeep API Details
+
+- **Base URL**: `http://192.168.100.230:23001/api/v1/`
+- **Authentication**: POST `/users/signin` → Bearer token
+- **Endpoints used**:
+  - `GET /bookmarks/search?q=query` - Search bookmarks
+  - `GET /tags` - List all tags
+  - `POST /tags` - Create tag with `{"name": "tagname"}`
+  - `POST /bookmarks` - Create bookmark with `{"type": "text", "text": "...", "note": "..."}`
+  - `POST /bookmarks/:id/tags` - Attach tags with `{"tagIds": [...]}`
+  - `GET /lists` - Get all lists (for name resolution)
+  - `GET /lists/:id` - Get list details by ID
+  - `PUT /lists/:id/bookmarks/:bookmarkId` - Add bookmark to list
+
+### Configuration
+
+Credentials loaded from `.env` file:
+```
+KARAKEEP_ID='email@example.com'
+KARAKEEP_PASSWORD='password'
+KARAKEEP_URL='http://192.168.100.230:23001'  # Optional
+```
+
+### Duplicate Prevention
+
+Uses search-based deduplication:
+1. Search Karakeep for first 50 chars of highlight text
+2. Check if results have matching `book:{title}` tag
+3. Skip if duplicate found (unless `--force` flag used)
+
+Alternative: Could track published highlights in local JSON file for more reliable detection.
 
 ## Dependencies
 
