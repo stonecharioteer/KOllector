@@ -25,30 +25,88 @@ def save_image_to_book(book: Book, image_data: bytes, content_type: str) -> bool
         return False
 
 
+def check_ol_config():
+    """Check if Open Library credentials are configured.
+
+    Returns tuple of (app_name, email) if configured, or (None, None) if not.
+    Flashes an error message if not configured.
+    """
+    cfg = AppConfig.query.first()
+    app_name = cfg.ol_app_name if cfg else None
+    email = cfg.ol_contact_email if cfg else None
+
+    if not app_name or not email:
+        flash('Open Library credentials not configured. Please set App Name and Contact Email in Config.', 'danger')
+        return None, None
+
+    return app_name, email
+
+
 @bp.route('/books')
 def index():
+    from sqlalchemy import func, case
+
     q = request.args.get('q', '').strip()
-    query = Book.query
+    sort_by = request.args.get('sort', 'title').strip()
+    sort_order = request.args.get('order', 'asc').strip()
+
+    # Base query with highlight counts
+    query = db.session.query(
+        Book,
+        func.count(Highlight.id).label('highlight_count')
+    ).outerjoin(
+        Highlight,
+        (Highlight.book_id == Book.id) &
+        (Highlight.kind.in_(['highlight', 'highlight_empty', 'highlight_no_position']))
+    ).group_by(Book.id)
+
+    # Apply search filter
     if q:
         like = f"%{q}%"
-        query = query.filter((Book.clean_title.ilike(like)) | (Book.raw_title.ilike(like)))
-    books = query.order_by(Book.clean_title.asc().nullslast(), Book.raw_title.asc()).limit(200).all()
-    # Compute highlight counts per book
-    from sqlalchemy import func
-    ids = [b.id for b in books]
-    counts = {}
-    total_highlights = 0
-    if ids:
-        rows = (
-            db.session.query(Highlight.book_id, func.count(Highlight.id))
-            .filter(Highlight.book_id.in_(ids))
-            .filter(Highlight.kind.in_(['highlight','highlight_empty','highlight_no_position']))
-            .group_by(Highlight.book_id)
-            .all()
+        query = query.filter(
+            (Book.clean_title.ilike(like)) |
+            (Book.raw_title.ilike(like)) |
+            (Book.clean_authors.ilike(like)) |
+            (Book.raw_authors.ilike(like))
         )
-        counts = {bid: cnt for bid, cnt in rows}
-        total_highlights = sum(counts.values())
-    return render_template('books/list.html', books=books, q=q, counts=counts, total_books=len(books), total_highlights=total_highlights)
+
+    # Apply sorting
+    if sort_by == 'title':
+        sort_col = case(
+            (Book.clean_title.isnot(None), Book.clean_title),
+            else_=Book.raw_title
+        )
+    elif sort_by == 'author':
+        sort_col = case(
+            (Book.clean_authors.isnot(None), Book.clean_authors),
+            else_=Book.raw_authors
+        )
+    elif sort_by == 'highlights':
+        sort_col = func.count(Highlight.id)
+    else:
+        sort_col = Book.clean_title
+
+    if sort_order == 'desc':
+        query = query.order_by(sort_col.desc().nullslast())
+    else:
+        query = query.order_by(sort_col.asc().nullslast())
+
+    # Execute query
+    results = query.limit(200).all()
+    books = [book for book, _ in results]
+    counts = {book.id: count for book, count in results}
+    total_highlights = sum(counts.values())
+
+    return render_template(
+        'books/list.html',
+        books=books,
+        q=q,
+        counts=counts,
+        total_books=len(books),
+        total_highlights=total_highlights,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
 
 
 @bp.route('/')
@@ -190,28 +248,34 @@ def book_merge(book_id: int):
 @bp.post('/books/<int:book_id>/ol-search')
 def book_ol_search(book_id: int):
     book = Book.query.get_or_404(book_id)
+
+    # Check if Open Library is configured
+    app_name, email = check_ol_config()
+    if not app_name or not email:
+        return redirect(url_for('books.book_detail', book_id=book.id))
+
     q = (request.form.get('q') or book.clean_title or book.raw_title or '').strip()
     results = []
     if q:
-        cfg = AppConfig.query.first()
-        app_name = cfg.ol_app_name if cfg else None
-        email = cfg.ol_contact_email if cfg else None
         try:
             results = ol_search(q, app_name=app_name, email=email, limit=8)
         except Exception:
             results = []
     # Quiet search feedback
     highlights = Highlight.query.filter_by(book_id=book.id, kind='highlight').order_by(Highlight.page_number.asc()).all()
-    return render_template('books/detail.html', book=book, highlights=highlights, ol_results=results, q=q)
+    return render_template('books/detail.html', book=book, highlights=highlights, ol_results=results, q=q, expand_metadata=True)
 
 
 @bp.post('/books/<int:book_id>/ol-apply')
 def book_ol_apply(book_id: int):
     book = Book.query.get_or_404(book_id)
+
+    # Check if Open Library is configured
+    app_name, email = check_ol_config()
+    if not app_name or not email:
+        return redirect(url_for('books.book_detail', book_id=book.id))
+
     url = request.form.get('url') or ''
-    cfg = AppConfig.query.first()
-    app_name = cfg.ol_app_name if cfg else None
-    email = cfg.ol_contact_email if cfg else None
 
     try:
         meta = fetch_ol(url, app_name=app_name, email=email)
@@ -244,9 +308,11 @@ def book_refresh(book_id: int):
     book = Book.query.get_or_404(book_id)
     if not book.goodreads_url:
         return redirect(url_for('books.book_detail', book_id=book.id))
-    cfg = AppConfig.query.first()
-    app_name = cfg.ol_app_name if cfg else None
-    email = cfg.ol_contact_email if cfg else None
+
+    # Check if Open Library is configured
+    app_name, email = check_ol_config()
+    if not app_name or not email:
+        return redirect(url_for('books.book_detail', book_id=book.id))
 
     try:
         meta = fetch_ol(book.goodreads_url, app_name=app_name, email=email)

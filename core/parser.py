@@ -71,6 +71,22 @@ class LuaTableParser:
         return None
 
     @staticmethod
+    def _unescape_lua_string(s: str) -> str:
+        """Unescape Lua string escape sequences.
+
+        Order matters: handle \\\\ first to avoid double-unescaping.
+        """
+        # Replace escape sequences in order from most specific to least
+        s = s.replace(r'\\', '\x00')  # Temporarily replace \\ with placeholder
+        s = s.replace(r'\"', '"')
+        s = s.replace(r"\'", "'")
+        s = s.replace(r'\n', '\n')
+        s = s.replace(r'\r', '\r')
+        s = s.replace(r'\t', '\t')
+        s = s.replace('\x00', '\\')  # Restore actual backslashes
+        return s
+
+    @staticmethod
     def _parse_annotations(annotations_str: str) -> List[ParserAnnotation]:
         annotations: List[ParserAnnotation] = []
         blocks = []
@@ -98,7 +114,7 @@ class LuaTableParser:
             for field in ['chapter', 'color', 'datetime', 'page', 'text', 'drawer', 'pos0', 'pos1']:
                 match = re.search(rf'\["{field}"\]\s*=\s*"((?:[^"\\]|\\.)*)"', block)
                 if match:
-                    values[field] = match.group(1)
+                    values[field] = LuaTableParser._unescape_lua_string(match.group(1))
             match = re.search(r'\["pageno"\]\s*=\s*(\d+)', block)
             if match:
                 values['pageno'] = int(match.group(1))
@@ -112,5 +128,5 @@ class LuaTableParser:
         for field in ['authors', 'title', 'language', 'description', 'identifiers', 'series']:
             match = re.search(rf'\["{field}"\]\s*=\s*"((?:[^"\\]|\\.)*)"', doc_props_str)
             if match:
-                values[field] = match.group(1)
+                values[field] = LuaTableParser._unescape_lua_string(match.group(1))
         return DocProps(**values)

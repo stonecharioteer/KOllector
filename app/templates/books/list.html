@@ -3,11 +3,13 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-2">
   <h1 class="h3 m-0">Books</h1>
-  <form class="d-flex" method="get">
+  <form class="d-flex" method="get" id="search-form">
     <input class="form-control form-control-sm me-2" type="search" placeholder="Search" name="q" value="{{ q }}">
+    <input type="hidden" name="sort" value="{{ sort_by }}">
+    <input type="hidden" name="order" value="{{ sort_order }}">
     <button class="btn btn-sm btn-primary" type="submit">Search</button>
   </form>
-  
+
 </div>
 
 <div class="mb-3 text-muted">
@@ -21,9 +23,36 @@
   <thead>
     <tr>
       <th style="width:64px">Cover</th>
-      <th>Title</th>
-      <th>Authors</th>
-      <th class="text-center" style="width:100px">Highlights</th>
+      <th>
+        <a href="?q={{ q }}&sort=title&order={{ 'desc' if sort_by == 'title' and sort_order == 'asc' else 'asc' }}" class="text-decoration-none text-dark">
+          Title
+          {% if sort_by == 'title' %}
+            <i class="fa-solid fa-sort-{{ 'down' if sort_order == 'desc' else 'up' }} ms-1"></i>
+          {% else %}
+            <i class="fa-solid fa-sort ms-1 text-muted"></i>
+          {% endif %}
+        </a>
+      </th>
+      <th>
+        <a href="?q={{ q }}&sort=author&order={{ 'desc' if sort_by == 'author' and sort_order == 'asc' else 'asc' }}" class="text-decoration-none text-dark">
+          Authors
+          {% if sort_by == 'author' %}
+            <i class="fa-solid fa-sort-{{ 'down' if sort_order == 'desc' else 'up' }} ms-1"></i>
+          {% else %}
+            <i class="fa-solid fa-sort ms-1 text-muted"></i>
+          {% endif %}
+        </a>
+      </th>
+      <th class="text-center" style="width:100px">
+        <a href="?q={{ q }}&sort=highlights&order={{ 'desc' if sort_by == 'highlights' and sort_order == 'asc' else 'asc' }}" class="text-decoration-none text-dark">
+          Highlights
+          {% if sort_by == 'highlights' %}
+            <i class="fa-solid fa-sort-{{ 'down' if sort_order == 'desc' else 'up' }} ms-1"></i>
+          {% else %}
+            <i class="fa-solid fa-sort ms-1 text-muted"></i>
+          {% endif %}
+        </a>
+      </th>
       <th>Open Library</th>
       <th></th>
     </tr>

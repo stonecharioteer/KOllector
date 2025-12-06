@@ -25,6 +25,44 @@ def create_app() -> Flask:
 
     db.init_app(app)
 
+    # Register custom Jinja filters
+    @app.template_filter('humandate')
+    def humandate_filter(date_str):
+        """Convert datetime string to human-readable format with time."""
+        if not date_str:
+            return ''
+        try:
+            from datetime import datetime
+            # Parse KOReader datetime format: YYYY-MM-DD HH:MM:SS
+            dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+            # Format as: "Jun 30, 2025 at 6:15 PM"
+            # Use %I instead of %-I for cross-platform compatibility, then strip leading zero
+            time_str = dt.strftime('%b %d, %Y at %I:%M %p')
+            # Remove leading zero from hour (e.g., "06:15" -> "6:15")
+            return time_str.replace(' 0', ' ')
+        except (ValueError, AttributeError):
+            # If parsing fails, return original
+            return date_str
+
+    @app.template_filter('humandate_short')
+    def humandate_short_filter(date_str):
+        """Convert datetime string to short date format (no time)."""
+        if not date_str:
+            return ''
+        try:
+            from datetime import datetime
+            # Try parsing full datetime format first: YYYY-MM-DD HH:MM:SS
+            try:
+                dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                # Try parsing date-only format: YYYY-MM-DD
+                dt = datetime.strptime(date_str, '%Y-%m-%d')
+            # Format as: "Jun 30, 2025"
+            return dt.strftime('%b %d, %Y')
+        except (ValueError, AttributeError):
+            # If parsing fails, return original
+            return date_str
+
     # Create tables on startup for convenience (no Alembic yet)
     with app.app_context():
         from . import models  # noqa: F401

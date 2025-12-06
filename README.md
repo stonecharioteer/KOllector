@@ -4,9 +4,53 @@
 
 # KOReader Highlights Collector (Web App)
 
-Manage KOReader highlights across devices via a local Flask app. The app scans KoReader metadata files, deduplicates highlights, tags them with device labels, and lets you clean up book metadata using Open Library.
+Browse, search, and enrich your KOReader highlights from all your devices via a local Flask web application. The app scans KOReader metadata files, aggregates highlights with device labels, and lets you enhance book metadata using Open Library.
+
+**Important**: This application does **not** sync highlights back to your devices. It's a read-only collector and viewer. Use [Syncthing](https://syncthing.net/) or similar tools to synchronize your KOReader metadata across devices.
 
 ![Landing](assets/banner.png)
+
+## Prerequisites: Syncing Highlights with Syncthing
+
+This application is designed to work with highlights that are already synchronized from your devices. Here's the recommended setup:
+
+### 1. Centralize KOReader Metadata
+
+On each KOReader device, ensure metadata is stored in a central location:
+
+- Go to KOReader Settings → Document → Document metadata folder
+- Set to a centralized path (e.g., `/mnt/us/koreader/docsettings` on Kindle)
+- This ensures all book metadata and highlights are in one place per device
+
+### 2. Sync with Syncthing
+
+Install [Syncthing](https://syncthing.net/) on your devices and central server/laptop:
+
+1. On each KOReader device, share the `docsettings` folder with your central server
+2. On your central server, configure Syncthing to receive these folders
+3. Organize synced folders by device, e.g.:
+   ```
+   ~/syncthing/koreader-highlights/
+   ├── boox-palma/
+   ├── kindle-paperwhite/
+   └── kobo-libra/
+   ```
+
+### 3. Mount in Docker
+
+Update your `docker-compose.yml` to mount your synced highlights:
+
+```yaml
+services:
+  web:
+    volumes:
+      - ~/syncthing/koreader-highlights:/data/highlights:ro
+  worker:
+    volumes:
+      - ~/syncthing/koreader-highlights:/data/highlights:ro
+```
+
+The `:ro` (read-only) flag ensures the application never modifies your source files.
 
 ## Quick Start (Docker Compose)
 
@@ -17,35 +61,44 @@ docker compose up --build
 - App: http://localhost:48138
 - RabbitMQ UI: http://localhost:15672 (guest/guest)
 - Postgres: localhost:5432
-- RustFS (image store): http://localhost:8080
 
-The compose mounts `./sample-highlights` into the container at `/data/highlights` read‑only.
+The default compose mounts `./sample-highlights` as an example. Replace this with your actual Syncthing folder as described above.
 
 ## Configure
 
 1) Open the app → Config
 
-- Add Source Folders: point to your highlights roots (parent or per-device). Optionally set a device label; if left blank, the last directory name is used (e.g., `/data/highlights/boox-palma` → `boox-palma`).
-- Open Library Identity: set App Name and Contact Email; these are sent in the User-Agent for API requests.
-- Image Store: set RustFS base URL (e.g., `http://rustfs:8080`) to store covers locally and serve them from your network.
+- **Add Source Folders**: Point to your highlights directories. You can add:
+  - Individual device folders: `/data/highlights/boox-palma`, `/data/highlights/kindle-paperwhite`
+  - Or the parent folder: `/data/highlights` (will scan all subdirectories)
+- **Device Labels** (optional): If not set, the folder name is used (e.g., `/data/highlights/boox-palma` → `boox-palma`)
+- **Open Library Identity**: Set App Name and Contact Email for API requests (sent in User-Agent)
 
 2) Scan
 
-- Click Scan to enqueue a background import. The worker reads KoReader metadata, dedupes highlights per book by content (text + page), and attaches device tags.
+- Click **Scan All** to trigger a background import
+- The Celery worker reads KOReader metadata files (`metadata.*.lua`)
+- Highlights are aggregated per book and tagged with device labels
+- The app never modifies your source files (read-only access)
 
 ## UI Overview
 
-- Books: list of imported books (folder‑derived title fallback). Edit a book inline.
-- Book Detail:
-  - Highlights: pretty quotes with page/chapter/date, device pills, and type badge (Highlight, Empty, No Pos).
-  - Open Library: search by title/author, apply a selected result to set clean title/author/cover; if RustFS is configured, covers are stored locally. You can refresh later via the saved URL.
-  - Merge: select multiple highlights and create a merged highlight without deleting originals.
+- **Books List**: Search and browse imported books with cover thumbnails, highlight counts, and Open Library links
+- **Book Detail**:
+  - View all highlights with page/chapter/date, device tags, and type badges
+  - Filter by device or highlight type
+  - Click any highlight to view in a beautiful shareable quote modal
+  - Download quotes as PNG images with adaptive layouts
+  - Edit metadata inline or search Open Library
+  - Upload covers or fetch from URLs (stored in database)
+- **Config**: Manage source folders, configure Open Library identity, migrate images to database
 
-## Design Notes
+## Design Philosophy
 
-- Read‑only ingestion: source KoReader files are never modified.
-- Device detection: uses configured device labels per folder; otherwise infers from the first subfolder.
-- Dedupe: per book, by (text, page_number) for highlight variants; device tags are merged.
+- **Read-only ingestion**: Source KOReader files are never modified; database is the system of record
+- **No syncing**: This app collects and displays highlights; it doesn't sync back to devices (use Syncthing for that)
+- **Device tracking**: Configured labels per folder track which device highlights came from
+- **Aggregation, not merging**: Highlights from all devices are collected and displayed together; originals are preserved
 
 ## Local Development
 
