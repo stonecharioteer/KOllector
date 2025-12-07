@@ -9,21 +9,17 @@ flowchart LR
   end
 
   subgraph App[Flask Application]
-    WEB[Flask Web
-    - books/config/exports views]
-    CORE[(core/ parser
-    + collector)]
+    WEB[Flask Web<br/>books/config/exports views]
+    CORE[(core/ parser<br/>+ collector)]
   end
 
   subgraph Worker[Background]
-    CELERY[Celery Worker
-    - scan & export tasks]
+    CELERY[Celery Worker<br/>scan & export tasks]
   end
 
-  DB[(Postgres
-  + Image Blobs)]
+  DB[(Postgres<br/>Image Blobs)]
   MQ[(RabbitMQ)]
-  FS[/Source Folders<br/>sample-highlights devices/]
+  FS[/Source Folders<br/>read-only/]
   EXPORTS[/Export Files<br/>ZIP archives/]
   OL[(Open Library API)]
 
@@ -38,12 +34,6 @@ flowchart LR
   WEB -->|HTTP fetch images| OL
   CELERY -->|write ZIP files| EXPORTS
   WEB -->|serve downloads| EXPORTS
-
-  note right of FS
-    metadata.*.lua files
-    per device folders
-    read-only mount
-  end
 
   classDef store fill:#eef,stroke:#99c
   classDef ext fill:#ffe,stroke:#cc9
