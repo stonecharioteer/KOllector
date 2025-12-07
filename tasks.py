@@ -210,3 +210,77 @@ def backfill_images():
         db.session.commit()
     logger.info("Backfilled %s book image(s) to RustFS", count)
     return count
+
+
+@celery.task(name='tasks.export_highlights')
+def export_highlights(job_id: str):
+    """Render highlights export using Jinja template and create zip file.
+
+    Args:
+        job_id: UUID of the ExportJob to process
+    """
+    import json
+    import zipfile
+    import tempfile
+    from datetime import datetime
+    from jinja2 import Template
+    from app.models import ExportJob, ExportTemplate, Book, Highlight
+
+    job = ExportJob.query.filter_by(job_id=job_id).first()
+    if not job:
+        logger.error("Export job %s not found", job_id)
+        return
+
+    try:
+        job.status = 'processing'
+        db.session.commit()
+
+        # Load data
+        book = Book.query.get(job.book_id)
+        template = ExportTemplate.query.get(job.template_id)
+        highlight_ids = json.loads(job.highlight_ids)
+        highlights = Highlight.query.filter(Highlight.id.in_(highlight_ids)).order_by(Highlight.page_number, Highlight.datetime).all()
+
+        # Calculate read range
+        dates = [h.datetime for h in highlights if h.datetime]
+        read_start = min(dates).split(' ')[0] if dates else None
+        read_end = max(dates).split(' ')[0] if dates else None
+
+        # Render template
+        jinja_template = Template(template.template_content)
+        rendered = jinja_template.render(
+            book=book,
+            highlights=highlights,
+            read_start=read_start,
+            read_end=read_end,
+            current_date=datetime.now().strftime('%Y-%m-%d'),
+            current_timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        )
+
+        # Create zip file
+        exports_dir = Path(current_app.config.get('EXPORT_DIR', '/tmp/exports'))
+        exports_dir.mkdir(parents=True, exist_ok=True)
+
+        zip_path = exports_dir / f"export_{job_id}.zip"
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # Add rendered content
+            zf.writestr('export.md', rendered)
+
+            # Add book cover if available
+            if book.image_data:
+                ext = 'jpg' if book.image_content_type == 'image/jpeg' else 'png'
+                zf.writestr(f'cover.{ext}', book.image_data)
+
+        job.status = 'completed'
+        job.file_path = str(zip_path)
+        job.completed_at = datetime.utcnow()
+        db.session.commit()
+
+        logger.info("Completed export job %s: %s highlights from '%s'",
+                   job_id, len(highlights), book.clean_title or book.raw_title)
+
+    except Exception as e:
+        logger.exception("Failed export job %s: %s", job_id, e)
+        job.status = 'failed'
+        job.error_message = str(e)
+        db.session.commit()

@@ -125,57 +125,99 @@
 </div>
 
 <h2 class="h5 mt-4">Highlights</h2>
-<form method="get" class="mb-3">
-  <div class="d-flex flex-wrap align-items-end gap-2">
-    <div class="d-flex flex-column me-2">
-      <label class="form-label small mb-1">Device</label>
-      <select name="device" class="form-select form-select-sm w-auto d-inline-block" onchange="this.form.submit()">
-        <option value="">All devices</option>
-        {% for d in devices %}
-          <option value="{{ d }}" {% if selected_device==d %}selected{% endif %}>{{ d }}</option>
-        {% endfor %}
-      </select>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <form method="get" class="flex-grow-1 me-3">
+    <div class="d-flex flex-wrap align-items-end gap-2">
+      <div class="d-flex flex-column me-2">
+        <label class="form-label small mb-1">Device</label>
+        <select name="device" class="form-select form-select-sm w-auto d-inline-block" onchange="this.form.submit()">
+          <option value="">All devices</option>
+          {% for d in devices %}
+            <option value="{{ d }}" {% if selected_device==d %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="d-flex flex-column me-2">
+        <label class="form-label small mb-1">Highlight type</label>
+        <select name="type" class="form-select form-select-sm w-auto d-inline-block" onchange="this.form.submit()">
+          <option value="highlight" {% if selected_type=='highlight' %}selected{% endif %}>Highlight</option>
+          <option value="highlight_empty" {% if selected_type=='highlight_empty' %}selected{% endif %}>Empty</option>
+          <option value="highlight_no_position" {% if selected_type=='highlight_no_position' %}selected{% endif %}>No Position</option>
+          <option value="all" {% if selected_type=='all' %}selected{% endif %}>All</option>
+        </select>
+      </div>
+      <div class="d-flex align-items-end">
+        <a class="btn btn-outline-secondary btn-sm px-2 py-1" href="{{ url_for('books.book_detail', book_id=book.id) }}" title="Reset filters"><i class="fa-solid fa-rotate-left"></i></a>
+      </div>
     </div>
-    <div class="d-flex flex-column me-2">
-      <label class="form-label small mb-1">Highlight type</label>
-      <select name="type" class="form-select form-select-sm w-auto d-inline-block" onchange="this.form.submit()">
-        <option value="highlight" {% if selected_type=='highlight' %}selected{% endif %}>Highlight</option>
-        <option value="highlight_empty" {% if selected_type=='highlight_empty' %}selected{% endif %}>Empty</option>
-        <option value="highlight_no_position" {% if selected_type=='highlight_no_position' %}selected{% endif %}>No Position</option>
-        <option value="all" {% if selected_type=='all' %}selected{% endif %}>All</option>
-      </select>
-    </div>
-    <div class="d-flex align-items-end">
-      <a class="btn btn-outline-secondary btn-sm px-2 py-1" href="{{ url_for('books.book_detail', book_id=book.id) }}" title="Reset filters"><i class="fa-solid fa-rotate-left"></i></a>
-    </div>
+  </form>
+
+  <div class="btn-group">
+    <button type="button" class="btn btn-sm btn-outline-primary" onclick="toggleSelectionMode()" id="selectModeBtn">
+      <i class="fa-solid fa-check-square"></i> Select
+    </button>
   </div>
-</form>
-<div class="list-group">
+</div>
+
+<!-- Export Form (hidden by default) -->
+<div id="exportPanel" class="card mb-3" style="display: none;">
+  <div class="card-body">
+    <form method="post" action="{{ url_for('exports.export_create', book_id=book.id) }}" id="exportForm">
+      <div class="d-flex justify-content-between align-items-center">
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-3">
+            <div>
+              <span id="selectedCount">0</span> highlight(s) selected
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAll()">Select All</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deselectAll()">Deselect All</button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <button type="submit" class="btn btn-sm btn-primary" id="exportBtn" disabled>
+            <i class="fa-solid fa-file-export"></i> Export Selected
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleSelectionMode()">Cancel</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+<div class="list-group" id="highlightsList">
   {% for h in highlights %}
     <div class="list-group-item quote-item" role="button" data-bs-toggle="modal" data-bs-target="#quoteModal" data-quote="{{ h.text|e }}" data-page="{{ h.page_number }}" data-chapter="{{ h.chapter }}" data-datetime="{{ h.datetime }}" data-hid="{{ h.id }}">
-      <div class="quote-card">
-        <p class="quote-text">{{ h.text }}</p>
-        <div class="quote-meta">
-          <span>Page {{ h.page_number }}</span>
-          {% if h.chapter %} • <span>{{ h.chapter }}</span>{% endif %}
-          {% if h.datetime %} • <span>{{ h.datetime|humandate }}</span>{% endif %}
-          <span class="ms-2">
-            {% set t = h.kind or 'highlight' %}
-            <span class="badge type-badge rounded-pill me-1">
-              {% if t == 'highlight_empty' %}Empty{% elif t == 'highlight_no_position' %}No Pos{% elif t == 'bookmark' %}Bookmark{% else %}Highlight{% endif %}
+      <div class="d-flex align-items-start">
+        <!-- Checkbox for selection (hidden by default) -->
+        <div class="selection-checkbox me-2" style="display: none;">
+          <input type="checkbox" class="form-check-input highlight-checkbox" value="{{ h.id }}" onclick="event.stopPropagation(); updateSelectedCount();">
+        </div>
+
+        <div class="quote-card flex-grow-1">
+          <p class="quote-text">{{ h.text }}</p>
+          <div class="quote-meta">
+            <span>Page {{ h.page_number }}</span>
+            {% if h.chapter %} • <span>{{ h.chapter }}</span>{% endif %}
+            {% if h.datetime %} • <span>{{ h.datetime|humandate }}</span>{% endif %}
+            <span class="ms-2">
+              {% set t = h.kind or 'highlight' %}
+              <span class="badge type-badge rounded-pill me-1">
+                {% if t == 'highlight_empty' %}Empty{% elif t == 'highlight_no_position' %}No Pos{% elif t == 'bookmark' %}Bookmark{% else %}Highlight{% endif %}
+              </span>
             </span>
-          </span>
-          <span class="quote-devices ms-1">
-            {% if h.devices %}
-              {% for d in h.devices %}
-                <span class="badge device-badge rounded-pill me-1">{{ d.device_id }}</span>
-              {% endfor %}
-            {% else %}
-              {% if h.device_id %}
-                <span class="badge device-badge rounded-pill me-1">{{ h.device_id }}</span>
+            <span class="quote-devices ms-1">
+              {% if h.devices %}
+                {% for d in h.devices %}
+                  <span class="badge device-badge rounded-pill me-1">{{ d.device_id }}</span>
+                {% endfor %}
+              {% else %}
+                {% if h.device_id %}
+                  <span class="badge device-badge rounded-pill me-1">{{ h.device_id }}</span>
+                {% endif %}
               {% endif %}
-            {% endif %}
-          </span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -496,6 +538,83 @@
       }, 100);
     }
   })();
+
+  // Export/Selection Mode
+  let selectionMode = false;
+
+  function toggleSelectionMode() {
+    selectionMode = !selectionMode;
+    const checkboxes = document.querySelectorAll('.selection-checkbox');
+    const exportPanel = document.getElementById('exportPanel');
+    const selectModeBtn = document.getElementById('selectModeBtn');
+    const quoteItems = document.querySelectorAll('.quote-item');
+
+    if (selectionMode) {
+      // Show checkboxes and export panel
+      checkboxes.forEach(cb => cb.style.display = 'block');
+      exportPanel.style.display = 'block';
+      selectModeBtn.innerHTML = '<i class="fa-solid fa-times"></i> Cancel';
+      selectModeBtn.classList.remove('btn-outline-primary');
+      selectModeBtn.classList.add('btn-outline-secondary');
+
+      // Disable modal toggle in selection mode
+      quoteItems.forEach(item => {
+        item.removeAttribute('data-bs-toggle');
+        item.removeAttribute('data-bs-target');
+        item.style.cursor = 'default';
+      });
+    } else {
+      // Hide checkboxes and export panel
+      checkboxes.forEach(cb => cb.style.display = 'none');
+      exportPanel.style.display = 'none';
+      selectModeBtn.innerHTML = '<i class="fa-solid fa-check-square"></i> Select';
+      selectModeBtn.classList.remove('btn-outline-secondary');
+      selectModeBtn.classList.add('btn-outline-primary');
+
+      // Re-enable modal toggle
+      quoteItems.forEach(item => {
+        item.setAttribute('data-bs-toggle', 'modal');
+        item.setAttribute('data-bs-target', '#quoteModal');
+        item.style.cursor = 'pointer';
+      });
+
+      // Deselect all
+      deselectAll();
+    }
+
+    updateSelectedCount();
+  }
+
+  function updateSelectedCount() {
+    const checked = document.querySelectorAll('.highlight-checkbox:checked');
+    const count = checked.length;
+    document.getElementById('selectedCount').textContent = count;
+    document.getElementById('exportBtn').disabled = count === 0;
+
+    // Update form with selected IDs
+    const form = document.getElementById('exportForm');
+    // Remove existing highlight_ids inputs
+    form.querySelectorAll('input[name="highlight_ids[]"]').forEach(input => input.remove());
+
+    // Add new inputs for checked items
+    checked.forEach(checkbox => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'highlight_ids[]';
+      input.value = checkbox.value;
+      form.appendChild(input);
+    });
+  }
+
+  function selectAll() {
+    document.querySelectorAll('.highlight-checkbox').forEach(cb => cb.checked = true);
+    updateSelectedCount();
+  }
+
+  function deselectAll() {
+    document.querySelectorAll('.highlight-checkbox').forEach(cb => cb.checked = false);
+    updateSelectedCount();
+  }
 </script>
 <!-- (removed duplicate html2canvas handler to avoid navigation issues) -->
 {% endblock %}
