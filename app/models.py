@@ -107,3 +107,27 @@ class AppConfig(db.Model, TimestampMixin):
     ol_app_name = db.Column(db.String(100), nullable=True)
     ol_contact_email = db.Column(db.String(200), nullable=True)
     rustfs_url = db.Column(db.String(300), nullable=True)
+
+
+class ExportTemplate(db.Model, TimestampMixin):
+    __tablename__ = 'export_templates'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    template_content = db.Column(db.Text, nullable=False)
+    is_default = db.Column(db.Boolean, default=False, nullable=False)
+
+
+class ExportJob(db.Model, TimestampMixin):
+    __tablename__ = 'export_jobs'
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.String(100), unique=True, nullable=False, index=True)  # UUID for the job
+    book_id = db.Column(db.Integer, db.ForeignKey('books.id'), index=True, nullable=False)
+    template_id = db.Column(db.Integer, db.ForeignKey('export_templates.id'), nullable=False)
+    highlight_ids = db.Column(db.Text, nullable=False)  # JSON array of highlight IDs
+    status = db.Column(db.String(50), default='pending', nullable=False)  # pending, processing, completed, failed
+    error_message = db.Column(db.Text, nullable=True)
+    file_path = db.Column(db.Text, nullable=True)  # Path to generated zip file
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    book = db.relationship('Book', backref='export_jobs')
+    template = db.relationship('ExportTemplate', backref='export_jobs')

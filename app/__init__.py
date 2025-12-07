@@ -17,6 +17,7 @@ def create_app() -> Flask:
     app.config.setdefault("CELERY_BROKER_URL", os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672//"))
     app.config.setdefault("CELERY_RESULT_BACKEND", os.getenv("CELERY_RESULT_BACKEND", "rpc://"))
     app.config.setdefault("RUSTFS_URL", os.getenv("RUSTFS_URL"))
+    app.config.setdefault("EXPORT_DIR", os.getenv("EXPORT_DIR", "/tmp/exports"))
     # Required for flash messages and sessions. Treat empty as unset.
     _sk = os.getenv("SECRET_KEY")
     if not _sk:
@@ -92,9 +93,11 @@ def create_app() -> Flask:
     from .views.books import bp as books_bp
     from .views.tasks import bp as tasks_bp
     from .views.config import bp as config_bp
+    from .views.exports import bp as exports_bp
     app.register_blueprint(books_bp)
     app.register_blueprint(tasks_bp)
     app.register_blueprint(config_bp)
+    app.register_blueprint(exports_bp)
 
     # Error pages
     @app.errorhandler(404)

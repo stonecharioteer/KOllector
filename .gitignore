@@ -31,3 +31,4 @@ Thumbs.db
 # Logs
 *.log
 sample-highlights/*
+exports/*.zip

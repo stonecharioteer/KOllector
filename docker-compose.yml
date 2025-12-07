@@ -24,10 +24,12 @@ services:
       DATABASE_URL: postgresql+psycopg://highlights:highlights@db:5432/highlights
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672//
       HIGHLIGHTS_BASE_PATH: /data/highlights
+      EXPORT_DIR: /data/exports
       FLASK_ENV: development
     volumes:
       - ./:/app
       - ./sample-highlights:/data/highlights:ro
+      - ./exports:/data/exports
     depends_on:
       - db
       - rabbitmq
@@ -43,9 +45,11 @@ services:
       DATABASE_URL: postgresql+psycopg://highlights:highlights@db:5432/highlights
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672//
       HIGHLIGHTS_BASE_PATH: /data/highlights
+      EXPORT_DIR: /data/exports
     volumes:
       - ./:/app
       - ./sample-highlights:/data/highlights:ro
+      - ./exports:/data/exports
     depends_on:
       - db
       - rabbitmq
