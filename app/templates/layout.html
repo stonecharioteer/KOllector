@@ -113,15 +113,7 @@
         </a>
         <div class="d-flex gap-2 align-items-center">
           <a class="btn btn-outline-light btn-sm" href="{{ url_for('books.index') }}">Books</a>
-          <div class="btn-group">
-            <button type="button" class="btn btn-outline-light btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-              Exports
-            </button>
-            <ul class="dropdown-menu">
-              <li><a class="dropdown-item" href="{{ url_for('exports.templates') }}">Templates</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('exports.jobs') }}">Export Jobs</a></li>
-            </ul>
-          </div>
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('jobs.index') }}">Jobs</a>
           <a class="btn btn-outline-light btn-sm" href="{{ url_for('config.index') }}">Config</a>
           <a class="btn btn-outline-light btn-sm" href="{{ url_for('tasks.trigger_scan') }}">Scan</a>
           <button id="themeToggle" class="btn btn-outline-light btn-sm" type="button" aria-label="Toggle theme">🌙</button>

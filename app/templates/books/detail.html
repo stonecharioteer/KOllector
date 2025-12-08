@@ -52,11 +52,6 @@
                   <label class="form-label">Authors</label>
                   <input name="clean_authors" class="form-control form-control-sm" value="{{ book.clean_authors or book.raw_authors }}">
                 </div>
-                <div class="col-md-6">
-                  <label class="form-label">Image URL</label>
-                  <input name="image_url" class="form-control form-control-sm" value="{{ book.image_url or '' }}" readonly>
-                  <small class="form-text text-muted">Use "Fetch Cover by URL" below to update this from external URLs</small>
-                </div>
               </div>
               <div class="mt-2">
                 <button class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk me-1"></i>Save</button>

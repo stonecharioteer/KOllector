@@ -116,6 +116,20 @@ class ExportTemplate(db.Model, TimestampMixin):
     name = db.Column(db.String(200), nullable=False)
     template_content = db.Column(db.Text, nullable=False)
     is_default = db.Column(db.Boolean, default=False, nullable=False)
+    # Jinja2 templates for filenames - variables: book_title, book_authors, export_date
+    filename_template = db.Column(db.String(500), nullable=False, default='{{ book_title }}.md')
+    cover_filename_template = db.Column(db.String(500), nullable=False, default='{{ book_title }}')
+
+
+class Job(db.Model, TimestampMixin):
+    __tablename__ = 'jobs'
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.String(100), unique=True, nullable=False, index=True)  # UUID or task ID
+    job_type = db.Column(db.String(50), nullable=False, index=True)  # scan, export, etc.
+    status = db.Column(db.String(50), default='pending', nullable=False, index=True)  # pending, processing, completed, failed
+    error_message = db.Column(db.Text, nullable=True)
+    result_summary = db.Column(db.Text, nullable=True)  # JSON summary of results
+    completed_at = db.Column(db.DateTime, nullable=True)
 
 
 class ExportJob(db.Model, TimestampMixin):

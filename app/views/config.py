@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, jsonif
 from sqlalchemy.exc import IntegrityError
 from croniter import croniter
 from .. import db
-from ..models import SourcePath, AppConfig
+from ..models import SourcePath, AppConfig, ExportTemplate
 
 bp = Blueprint('config', __name__)
 
@@ -100,7 +100,8 @@ def index():
             return redirect(url_for('config.index'))
 
     paths = SourcePath.query.order_by(SourcePath.enabled.desc(), SourcePath.path.asc()).all()
-    return render_template('config/index.html', paths=paths, cfg=cfg)
+    templates = ExportTemplate.query.order_by(ExportTemplate.is_default.desc(), ExportTemplate.name).all()
+    return render_template('config/index.html', paths=paths, cfg=cfg, templates=templates)
 
 
 @bp.get('/config/suggest')

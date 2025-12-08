@@ -7,8 +7,10 @@ from flask import current_app
 
 from celery_app import make_celery
 from app import create_app, db
-from app.models import Book, Highlight, Bookmark, Note, SourcePath, HighlightDevice
+from app.models import Book, Highlight, Bookmark, Note, SourcePath, HighlightDevice, Job
 from core import LuaTableParser, iter_metadata_files, HighlightKind
+import json
+from datetime import datetime
 
 
 flask_app = create_app()
@@ -45,17 +47,62 @@ def scan_base_path(base_path: Optional[str] = None):
     return count
 
 
-@celery.task(name='tasks.scan_all_paths')
-def scan_all_paths():
-    total = 0
-    paths = SourcePath.query.filter_by(enabled=True).order_by(SourcePath.path.asc()).all()
-    if paths:
-        for sp in paths:
-            total += _scan_base_path_internal(Path(sp.path), device_label=sp.device_label if hasattr(sp, 'device_label') else None)
-    else:
-        logger.info("No source paths configured; skipping scan.")
-    logger.info("Scanned total %s files across configured paths", total)
-    return total
+@celery.task(name='tasks.scan_all_paths', bind=True)
+def scan_all_paths(self):
+    task_id = self.request.id
+
+    # Create job record
+    job = Job(
+        job_id=task_id,
+        job_type='scan',
+        status='processing'
+    )
+    db.session.add(job)
+    db.session.commit()
+
+    try:
+        # Track statistics
+        books_before = Book.query.count()
+        highlights_before = Highlight.query.count()
+
+        total = 0
+        paths = SourcePath.query.filter_by(enabled=True).order_by(SourcePath.path.asc()).all()
+        if paths:
+            for sp in paths:
+                total += _scan_base_path_internal(Path(sp.path), device_label=sp.device_label if hasattr(sp, 'device_label') else None)
+        else:
+            logger.info("No source paths configured; skipping scan.")
+
+        # Calculate new items
+        books_after = Book.query.count()
+        highlights_after = Highlight.query.count()
+        new_books = books_after - books_before
+        new_highlights = highlights_after - highlights_before
+
+        logger.info("Scanned total %s files across configured paths", total)
+        logger.info("Added %s new book(s) and %s new highlight(s)", new_books, new_highlights)
+
+        # Update job record
+        job.status = 'completed'
+        job.result_summary = json.dumps({
+            'files_scanned': total,
+            'paths_count': len(paths) if paths else 0,
+            'new_books': new_books,
+            'new_highlights': new_highlights,
+            'total_books': books_after,
+            'total_highlights': highlights_after
+        })
+        job.completed_at = datetime.utcnow()
+        db.session.commit()
+
+        return total
+    except Exception as e:
+        logger.exception("Scan failed: %s", e)
+        job.status = 'failed'
+        job.error_message = str(e)
+        job.completed_at = datetime.utcnow()
+        db.session.commit()
+        raise
 
 
 @celery.task(name='tasks.import_file')
@@ -220,16 +267,41 @@ def export_highlights(job_id: str):
         read_start = min(dates).split(' ')[0] if dates else None
         read_end = max(dates).split(' ')[0] if dates else None
 
-        # Render template
+        # Prepare template context
+        export_date = datetime.now().strftime('%Y-%m-%d')
+        template_context = {
+            'book': book,
+            'highlights': highlights,
+            'read_start': read_start,
+            'read_end': read_end,
+            'current_date': export_date,
+            'current_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'book_title': book.clean_title or book.raw_title or 'book',
+            'book_authors': book.clean_authors or book.raw_authors or '',
+            'export_date': export_date
+        }
+
+        # Render content template
         jinja_template = Template(template.template_content)
-        rendered = jinja_template.render(
-            book=book,
-            highlights=highlights,
-            read_start=read_start,
-            read_end=read_end,
-            current_date=datetime.now().strftime('%Y-%m-%d'),
-            current_timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        )
+        rendered = jinja_template.render(**template_context)
+
+        # Render filename templates
+        def sanitize_filename(name: str) -> str:
+            """Sanitize a filename by removing invalid characters."""
+            # Remove invalid characters
+            safe = re.sub(r'[^\w\s.-]', '', name)
+            # Collapse whitespace and hyphens
+            safe = re.sub(r'[-\s]+', '_', safe).strip('_')
+            # Limit length
+            return safe[:200]
+
+        filename_template = Template(template.filename_template)
+        rendered_filename = filename_template.render(**template_context)
+        safe_filename = sanitize_filename(rendered_filename)
+
+        cover_filename_template = Template(template.cover_filename_template)
+        rendered_cover_filename = cover_filename_template.render(**template_context)
+        safe_cover_filename = sanitize_filename(rendered_cover_filename)
 
         # Create zip file
         exports_dir = Path(current_app.config.get('EXPORT_DIR', '/tmp/exports'))
@@ -238,12 +310,12 @@ def export_highlights(job_id: str):
         zip_path = exports_dir / f"export_{job_id}.zip"
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             # Add rendered content
-            zf.writestr('export.md', rendered)
+            zf.writestr(safe_filename, rendered)
 
             # Add book cover if available
             if book.image_data:
                 ext = 'jpg' if book.image_content_type == 'image/jpeg' else 'png'
-                zf.writestr(f'cover.{ext}', book.image_data)
+                zf.writestr(f'{safe_cover_filename}.{ext}', book.image_data)
 
         job.status = 'completed'
         job.file_path = str(zip_path)

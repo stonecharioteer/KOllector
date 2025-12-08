@@ -15,10 +15,6 @@
     <label class="form-label">Open Library URL or search</label>
     <input name="goodreads_url" class="form-control" placeholder="https://openlibrary.org/works/OL...W or 'Title by Author'" value="{{ book.goodreads_url or '' }}">
   </div>
-  <div class="mb-3">
-    <label class="form-label">Image URL</label>
-    <input name="image_url" class="form-control" value="{{ book.image_url or '' }}">
-  </div>
   <button class="btn btn-primary">Save</button>
   <a href="{{ url_for('books.book_detail', book_id=book.id) }}" class="btn btn-link">Cancel</a>
  </form>
