@@ -1,0 +1,108 @@
+{% extends 'layout.html' %}
+{% block title_suffix %} — Jobs{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 m-0">Background Jobs</h1>
+  <button class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+    <i class="fa-solid fa-rotate"></i> Refresh
+  </button>
+</div>
+
+<p class="text-muted small">
+  Showing recent background jobs (scans, exports, etc.) with their status and results.
+</p>
+
+<table class="table table-sm align-middle">
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Status</th>
+      <th>Created</th>
+      <th>Completed</th>
+      <th>Details</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr class="{% if job.status == 'failed' %}table-danger{% elif job.status == 'processing' %}table-warning{% elif job.status == 'completed' %}table-success{% endif %}">
+      <td>
+        {% if job.type == 'scan' %}
+          <i class="fa-solid fa-magnifying-glass me-1"></i>Scan
+        {% elif job.type == 'export' %}
+          <i class="fa-solid fa-file-export me-1"></i>Export
+        {% else %}
+          {{ job.type|title }}
+        {% endif %}
+      </td>
+      <td>
+        <span class="badge
+          {% if job.status == 'completed' %}bg-success
+          {% elif job.status == 'failed' %}bg-danger
+          {% elif job.status == 'processing' %}bg-warning
+          {% else %}bg-secondary{% endif %}">
+          {{ job.status|title }}
+        </span>
+      </td>
+      <td>
+        <code class="text-muted small">{{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</code>
+      </td>
+      <td>
+        {% if job.completed_at %}
+          <code class="text-muted small">{{ job.completed_at.strftime('%Y-%m-%d %H:%M:%S') }}</code>
+        {% else %}
+          <span class="text-muted">-</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if job.error_message %}
+          <span class="text-danger small">{{ job.error_message[:100] }}</span>
+        {% elif job.result_summary and job.type == 'scan' %}
+          {% set result = job.result_summary|from_json %}
+          <span class="small">
+            <i class="fa-solid fa-file me-1"></i>{{ result.files_scanned }} files,
+            <i class="fa-solid fa-book ms-2 me-1"></i>+{{ result.new_books }} books,
+            <i class="fa-solid fa-highlighter ms-2 me-1"></i>+{{ result.new_highlights }} highlights
+          </span>
+        {% elif job.result_summary %}
+          <code class="text-muted small">{{ job.result_summary[:100] }}</code>
+        {% elif job.is_export and job.book_title %}
+          <span class="small">{{ job.book_title }}</span>
+        {% else %}
+          <span class="text-muted">-</span>
+        {% endif %}
+      </td>
+      <td class="text-end">
+        {% if job.is_export and job.status == 'completed' and job.file_path %}
+          <a href="{{ url_for('exports.download', job_id=job.id) }}" class="btn btn-sm btn-outline-primary">
+            <i class="fa-solid fa-download"></i> Download
+          </a>
+        {% endif %}
+        {% if job.is_export %}
+          <form method="post" action="{{ url_for('exports.job_delete', job_id=job.id) }}" class="d-inline" onsubmit="return confirm('Delete this job?')">
+            <button class="btn btn-sm btn-outline-danger">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  {% if not jobs %}
+    <tr>
+      <td colspan="6" class="text-center text-muted">No jobs yet</td>
+    </tr>
+  {% endif %}
+  </tbody>
+</table>
+
+<script>
+// Auto-refresh processing jobs every 5 seconds
+(function() {
+  const hasProcessing = {{ 'true' if jobs|selectattr('status', 'equalto', 'processing')|list else 'false' }};
+  if (hasProcessing) {
+    setTimeout(() => location.reload(), 5000);
+  }
+})();
+</script>
+{% endblock %}

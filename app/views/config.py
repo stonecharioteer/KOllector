@@ -3,8 +3,9 @@ import os
 from glob import glob
 from flask import Blueprint, render_template, request, redirect, url_for, jsonify, flash
 from sqlalchemy.exc import IntegrityError
+from croniter import croniter
 from .. import db
-from ..models import SourcePath, AppConfig
+from ..models import SourcePath, AppConfig, ExportTemplate
 
 bp = Blueprint('config', __name__)
 
@@ -81,8 +82,26 @@ def index():
             db.session.commit()
             return redirect(url_for('config.index'))
 
+        if 'scan_schedule' in request.form:
+            new_schedule = (request.form.get('scan_schedule') or '').strip()
+            if not new_schedule:
+                flash('Scan schedule cannot be empty', 'danger')
+                return redirect(url_for('config.index'))
+
+            # Validate cron syntax
+            try:
+                croniter(new_schedule)
+                cfg.scan_schedule = new_schedule
+                db.session.add(cfg)
+                db.session.commit()
+                flash('Scan schedule updated successfully. Restart Celery Beat for changes to take effect.', 'success')
+            except (ValueError, KeyError) as e:
+                flash(f'Invalid cron syntax: {str(e)}', 'danger')
+            return redirect(url_for('config.index'))
+
     paths = SourcePath.query.order_by(SourcePath.enabled.desc(), SourcePath.path.asc()).all()
-    return render_template('config/index.html', paths=paths, cfg=cfg)
+    templates = ExportTemplate.query.order_by(ExportTemplate.is_default.desc(), ExportTemplate.name).all()
+    return render_template('config/index.html', paths=paths, cfg=cfg, templates=templates)
 
 
 @bp.get('/config/suggest')
@@ -154,3 +173,35 @@ def update_label(pid: int):
     db.session.add(sp)
     db.session.commit()
     return redirect(url_for('config.index'))
+
+
+@bp.get('/config/validate-cron')
+def validate_cron():
+    """Validate a cron expression via AJAX."""
+    expression = request.args.get('expression', '').strip()
+
+    if not expression:
+        return jsonify({
+            'valid': False,
+            'error': 'Cron expression cannot be empty'
+        })
+
+    try:
+        croniter(expression)
+        # Get next 3 run times to show user
+        from datetime import datetime
+        iter_obj = croniter(expression, datetime.utcnow())
+        next_runs = []
+        for _ in range(3):
+            next_run = iter_obj.get_next(datetime)
+            next_runs.append(next_run.strftime('%Y-%m-%d %H:%M:%S UTC'))
+
+        return jsonify({
+            'valid': True,
+            'next_runs': next_runs
+        })
+    except (ValueError, KeyError) as e:
+        return jsonify({
+            'valid': False,
+            'error': f'Invalid cron syntax: {str(e)}'
+        })

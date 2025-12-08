@@ -49,27 +49,80 @@
 
 <hr class="my-4">
 
-<h2 class="h5">Open Library</h2>
-<p class="text-muted small mb-2">Both fields are required to use Open Library features (search, metadata enrichment).</p>
-<form method="post" class="row g-2 mb-3">
-  <div class="col-sm-4">
-    <input name="ol_app_name" class="form-control" placeholder="App Name (required)" value="{{ cfg.ol_app_name or '' }}" required>
+<div class="row g-3">
+  <div class="col-lg-6">
+    <h2 class="h5">Periodic Scanning</h2>
+    <p class="text-muted small mb-2">Configure automatic highlight scanning using cron syntax. The default schedule is every 15 minutes (*/15 * * * *).</p>
+    <form method="post" id="scan-schedule-form">
+      <div class="mb-2">
+        <input name="scan_schedule" id="scan-schedule-input" class="form-control form-control-sm" placeholder="*/15 * * * *" value="{{ cfg.scan_schedule or '*/15 * * * *' }}" required style="max-width: 300px;">
+        <small class="text-muted d-block">Format: minute hour day month day_of_week</small>
+      </div>
+      <div id="schedule-validation" class="mb-2"></div>
+      <button class="btn btn-primary btn-sm" id="save-schedule-btn" disabled>Save Schedule</button>
+    </form>
   </div>
-  <div class="col-sm-5">
-    <input name="ol_contact_email" type="email" class="form-control" placeholder="Contact Email (required)" value="{{ cfg.ol_contact_email or '' }}" required>
-  </div>
-  <div class="col-sm-3 d-grid">
-    <button class="btn btn-primary">Save Open Library Config</button>
-  </div>
-</form>
 
-<h2 class="h5">Image Management</h2>
-<div class="mb-4">
-  <form method="post" action="{{ url_for('books.migrate_images_to_database') }}" class="d-inline" onsubmit="return confirm('This will migrate all external image URLs to database blobs. Continue?')">
-    <button type="submit" class="btn btn-outline-secondary btn-sm">Migrate Images to Database</button>
-  </form>
-  <small class="text-muted ms-2">Converts existing external cover URLs to database-stored blobs.</small>
+  <div class="col-lg-6">
+    <h2 class="h5">Open Library</h2>
+    <p class="text-muted small mb-2">Both fields are required to use Open Library features (search, metadata enrichment).</p>
+    <form method="post">
+      <div class="mb-2">
+        <input name="ol_app_name" class="form-control form-control-sm mb-2" placeholder="App Name (required)" value="{{ cfg.ol_app_name or '' }}" required>
+        <input name="ol_contact_email" type="email" class="form-control form-control-sm" placeholder="Contact Email (required)" value="{{ cfg.ol_contact_email or '' }}" required>
+      </div>
+      <button class="btn btn-primary btn-sm">Save Open Library Config</button>
+    </form>
+  </div>
 </div>
+
+<hr class="my-4">
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="h5 m-0">Export Templates</h2>
+  <a href="{{ url_for('exports.template_new') }}" class="btn btn-sm btn-primary">
+    <i class="fa-solid fa-plus"></i> New Template
+  </a>
+</div>
+
+<p class="text-muted small mb-3">Manage Jinja2 templates for exporting highlights to various formats (Markdown, etc.).</p>
+
+{% if templates %}
+<div class="list-group">
+  {% for template in templates %}
+  <div class="list-group-item d-flex justify-content-between align-items-start">
+    <div class="flex-grow-1">
+      <h6 class="mb-1">
+        {{ template.name }}
+        {% if template.is_default %}
+        <span class="badge bg-success ms-2">Default</span>
+        {% endif %}
+      </h6>
+      <p class="mb-0 text-muted small">
+        Created: {{ template.created_at.strftime('%b %d, %Y') }}
+        {% if template.updated_at != template.created_at %}
+        • Updated: {{ template.updated_at.strftime('%b %d, %Y') }}
+        {% endif %}
+      </p>
+    </div>
+    <div class="btn-group">
+      <a href="{{ url_for('exports.template_edit', template_id=template.id) }}" class="btn btn-sm btn-outline-secondary">
+        <i class="fa-solid fa-pen"></i> Edit
+      </a>
+      <form method="post" action="{{ url_for('exports.template_delete', template_id=template.id) }}" class="d-inline" onsubmit="return confirm('Delete template {{ template.name }}?');">
+        <button type="submit" class="btn btn-sm btn-outline-danger">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+  <i class="fa-solid fa-info-circle"></i> No templates configured. Create your first template to export highlights.
+</div>
+{% endif %}
 
 <script>
   (function(){
@@ -92,6 +145,67 @@
     });
     // Initial suggestions for convenience
     updateSuggestions();
+  })();
+
+  // Cron validation
+  (function(){
+    const scheduleInput = document.getElementById('scan-schedule-input');
+    const saveBtn = document.getElementById('save-schedule-btn');
+    const validationDiv = document.getElementById('schedule-validation');
+    const form = document.getElementById('scan-schedule-form');
+    let isValid = false;
+
+    function validateCronExpression() {
+      const expression = scheduleInput.value.trim();
+      if (!expression) {
+        validationDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1 px-2 small">Cron expression cannot be empty</div>';
+        saveBtn.disabled = true;
+        isValid = false;
+        return;
+      }
+
+      validationDiv.innerHTML = '<div class="alert alert-info alert-sm py-1 px-2 small">Validating...</div>';
+
+      fetch(`/config/validate-cron?expression=${encodeURIComponent(expression)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.valid) {
+            const nextRuns = data.next_runs.map(t => `<li class="small">${t}</li>`).join('');
+            validationDiv.innerHTML = `
+              <div class="alert alert-success alert-sm py-1 px-2 small">
+                <strong>Valid!</strong> Next 3 runs:
+                <ul class="mb-0 mt-1">${nextRuns}</ul>
+              </div>
+            `;
+            saveBtn.disabled = false;
+            isValid = true;
+          } else {
+            validationDiv.innerHTML = `<div class="alert alert-danger alert-sm py-1 px-2 small">${data.error}</div>`;
+            saveBtn.disabled = true;
+            isValid = false;
+          }
+        })
+        .catch(err => {
+          validationDiv.innerHTML = '<div class="alert alert-danger alert-sm py-1 px-2 small">Failed to validate cron expression</div>';
+          saveBtn.disabled = true;
+          isValid = false;
+        });
+    }
+
+    // Validate on blur (leaving the input)
+    scheduleInput.addEventListener('blur', validateCronExpression);
+
+    // Validate on form submit
+    form.addEventListener('submit', function(e) {
+      if (!isValid) {
+        e.preventDefault();
+        validateCronExpression();
+        return false;
+      }
+    });
+
+    // Initial validation on page load
+    validateCronExpression();
   })();
   </script>
 {% endblock %}

@@ -59,10 +59,18 @@
           </ul>
 
           <h6 class="mt-3">Cover Image</h6>
-          <p class="small">The book cover is automatically included in the zip as <code>cover.jpg</code> or <code>cover.png</code> (if available). Reference it in your template:</p>
+          <p class="small">The book cover is automatically included in the zip (if available). The filename is determined by your "Cover Filename Template" setting below. Reference it in your template using the same template variables. For example, if your cover template is <code>{{ book_title }}</code>, reference it as:</p>
           <ul class="small">
-            <li>Markdown: <code>![Cover](cover.jpg)</code></li>
-            <li>HTML: <code>&lt;img src="cover.jpg" alt="Cover"&gt;</code></li>
+            <li>Markdown: <code>![Cover]({{ book_title }}.jpg)</code> or <code>![Cover]({{ book_title }}.png)</code></li>
+            <li>HTML: <code>&lt;img src="{{ book_title }}.jpg" alt="Cover"&gt;</code></li>
+          </ul>
+
+          <h6 class="mt-3">Filename Template Variables</h6>
+          <p class="small">Available for both export filename and cover filename templates:</p>
+          <ul class="small">
+            <li><code>{% raw %}{{ book_title }}{% endraw %}</code> - Book title (clean_title or raw_title)</li>
+            <li><code>{% raw %}{{ book_authors }}{% endraw %}</code> - Book authors (clean_authors or raw_authors)</li>
+            <li><code>{% raw %}{{ export_date }}{% endraw %}</code> - Export date (YYYY-MM-DD)</li>
           </ul>
 
           <h6 class="mt-3">Jinja2 Control Structures</h6>
@@ -91,6 +99,19 @@
       <label for="template_content" class="form-label">Template Content (Jinja2)</label>
       <textarea class="form-control font-monospace" id="template_content" name="template_content" rows="20" required>{{ template.template_content if template else '' }}</textarea>
       <div class="form-text">Use Jinja2 syntax. Click "Template Variables Reference" above for available variables.</div>
+    </div>
+
+    <div class="row mb-3">
+      <div class="col-md-6">
+        <label for="filename_template" class="form-label">Export Filename Template</label>
+        <input type="text" class="form-control font-monospace" id="filename_template" name="filename_template" value="{{ template.filename_template if template else '{{ book_title }}.md' }}" required>
+        <div class="form-text small">Jinja2 template for exported file. Variables: <code>book_title</code>, <code>book_authors</code>, <code>export_date</code></div>
+      </div>
+      <div class="col-md-6">
+        <label for="cover_filename_template" class="form-label">Cover Filename Template</label>
+        <input type="text" class="form-control font-monospace" id="cover_filename_template" name="cover_filename_template" value="{{ template.cover_filename_template if template else '{{ book_title }}' }}" required>
+        <div class="form-text small">Jinja2 template (without extension). Variables: <code>book_title</code>, <code>book_authors</code>, <code>export_date</code></div>
+      </div>
     </div>
 
     <div class="form-check mb-3">

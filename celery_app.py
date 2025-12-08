@@ -11,6 +11,11 @@ def make_celery(flask_app):
     )
     celery.conf.update(task_ignore_result=True)
 
+    # Configure Celery Beat schedule
+    from celerybeat_schedule import get_beat_schedule
+    celery.conf.beat_schedule = get_beat_schedule()
+    celery.conf.timezone = 'UTC'
+
     class ContextTask(celery.Task):
         def __call__(self, *args, **kwargs):
             with flask_app.app_context():

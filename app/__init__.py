@@ -16,7 +16,6 @@ def create_app() -> Flask:
     app.config.setdefault("HIGHLIGHTS_BASE_PATH", os.getenv("HIGHLIGHTS_BASE_PATH", str((os.getcwd() + "/sample-highlights"))))
     app.config.setdefault("CELERY_BROKER_URL", os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672//"))
     app.config.setdefault("CELERY_RESULT_BACKEND", os.getenv("CELERY_RESULT_BACKEND", "rpc://"))
-    app.config.setdefault("RUSTFS_URL", os.getenv("RUSTFS_URL"))
     app.config.setdefault("EXPORT_DIR", os.getenv("EXPORT_DIR", "/tmp/exports"))
     # Required for flash messages and sessions. Treat empty as unset.
     _sk = os.getenv("SECRET_KEY")
@@ -27,6 +26,17 @@ def create_app() -> Flask:
     db.init_app(app)
 
     # Register custom Jinja filters
+    @app.template_filter('from_json')
+    def from_json_filter(json_str):
+        """Parse JSON string to Python object."""
+        if not json_str:
+            return {}
+        try:
+            import json
+            return json.loads(json_str)
+        except (ValueError, TypeError):
+            return {}
+
     @app.template_filter('humandate')
     def humandate_filter(date_str):
         """Convert datetime string to human-readable format with time."""
@@ -94,10 +104,12 @@ def create_app() -> Flask:
     from .views.tasks import bp as tasks_bp
     from .views.config import bp as config_bp
     from .views.exports import bp as exports_bp
+    from .views.jobs import bp as jobs_bp
     app.register_blueprint(books_bp)
     app.register_blueprint(tasks_bp)
     app.register_blueprint(config_bp)
     app.register_blueprint(exports_bp)
+    app.register_blueprint(jobs_bp)
 
     # Error pages
     @app.errorhandler(404)

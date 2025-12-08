@@ -17,8 +17,6 @@ def save_image_to_book(book: Book, image_data: bytes, content_type: str) -> bool
     try:
         book.image_data = image_data
         book.image_content_type = content_type
-        # Keep image_url as None or empty to indicate using database blob
-        book.image_url = None
         return True
     except Exception as e:
         current_app.logger.error(f'Failed to save image data for book {book.id}: {e}')
@@ -47,13 +45,14 @@ def index():
     from sqlalchemy import func, case
 
     q = request.args.get('q', '').strip()
-    sort_by = request.args.get('sort', 'title').strip()
-    sort_order = request.args.get('order', 'asc').strip()
+    sort_by = request.args.get('sort', 'updated').strip()
+    sort_order = request.args.get('order', 'desc').strip()
 
-    # Base query with highlight counts
+    # Base query with highlight counts and last updated
     query = db.session.query(
         Book,
-        func.count(Highlight.id).label('highlight_count')
+        func.count(Highlight.id).label('highlight_count'),
+        func.max(Highlight.datetime).label('last_updated')
     ).outerjoin(
         Highlight,
         (Highlight.book_id == Book.id) &
@@ -83,6 +82,8 @@ def index():
         )
     elif sort_by == 'highlights':
         sort_col = func.count(Highlight.id)
+    elif sort_by == 'updated':
+        sort_col = func.max(Highlight.datetime)
     else:
         sort_col = Book.clean_title
 
@@ -93,8 +94,9 @@ def index():
 
     # Execute query
     results = query.limit(200).all()
-    books = [book for book, _ in results]
-    counts = {book.id: count for book, count in results}
+    books = [book for book, _, _ in results]
+    counts = {book.id: count for book, count, _ in results}
+    last_updated = {book.id: updated for book, _, updated in results}
     total_highlights = sum(counts.values())
 
     return render_template(
@@ -102,6 +104,7 @@ def index():
         books=books,
         q=q,
         counts=counts,
+        last_updated=last_updated,
         total_books=len(books),
         total_highlights=total_highlights,
         sort_by=sort_by,
@@ -122,9 +125,15 @@ def book_detail(book_id: int):
     # Filters
     kind_filter = request.args.get('type', 'highlight').strip() or 'highlight'
     device_filter = request.args.get('device', '').strip()
+    show_hidden = request.args.get('show_hidden', '').strip() == 'true'
 
     # Build query
     q = Highlight.query.filter(Highlight.book_id == book.id)
+
+    # Filter hidden highlights unless explicitly requested
+    if not show_hidden:
+        q = q.filter(Highlight.hidden == False)
+
     allowed_kinds = ['highlight', 'highlight_empty', 'highlight_no_position']
     if kind_filter == 'all':
         q = q.filter(Highlight.kind.in_(allowed_kinds))
@@ -175,6 +184,7 @@ def book_detail(book_id: int):
         devices=devices,
         selected_device=device_filter,
         selected_type=kind_filter,
+        show_hidden=show_hidden,
         ol_results=None
     )
 
@@ -186,7 +196,6 @@ def book_edit(book_id: int):
         new_clean_title = request.form.get('clean_title') or None
         new_clean_authors = request.form.get('clean_authors') or None
         new_goodreads_url = request.form.get('goodreads_url') or None
-        new_image_url = request.form.get('image_url') or None
 
         # Detect Goodreads URL update and fetch metadata
         url_changed = (new_goodreads_url or None) != (book.goodreads_url or None)
@@ -206,7 +215,6 @@ def book_edit(book_id: int):
                     if result:
                         image_data, content_type = result
                         save_image_to_book(book, image_data, content_type)
-                        new_image_url = None  # Use database blob
                 # persist normalized openlibrary URL if provided
                 if meta.get('url'):
                     new_goodreads_url = meta['url']
@@ -216,7 +224,6 @@ def book_edit(book_id: int):
         book.clean_title = new_clean_title
         book.clean_authors = new_clean_authors
         book.goodreads_url = new_goodreads_url
-        book.image_url = new_image_url
         db.session.add(book)
         db.session.commit()
         flash('Book metadata updated.', 'success')
@@ -352,20 +359,6 @@ def book_update_inline(book_id: int):
     book = Book.query.get_or_404(book_id)
     book.clean_title = (request.form.get('clean_title') or '').strip() or None
     book.clean_authors = (request.form.get('clean_authors') or '').strip() or None
-
-    # Image URL field is now read-only in the UI; users should use "Fetch Cover by URL" button
-    # If they somehow submit a URL, fetch and store it in database
-    new_image_url = (request.form.get('image_url') or '').strip() or None
-    if new_image_url and (new_image_url.startswith('http://') or new_image_url.startswith('https://')):
-        result = fetch_image_from_url(new_image_url)
-        if result:
-            image_data, content_type = result
-            if save_image_to_book(book, image_data, content_type):
-                flash('Image fetched and saved to database.', 'success')
-            else:
-                flash('Failed to save image. Use the "Fetch Cover by URL" button instead.', 'warning')
-        else:
-            flash('Failed to fetch image from URL. Use the "Fetch Cover by URL" button instead.', 'warning')
 
     db.session.add(book)
     db.session.commit()
@@ -555,51 +548,18 @@ def book_image_fetch(book_id: int):
     return redirect(url_for('books.book_detail', book_id=book.id))
 
 
-@bp.post('/admin/migrate-images-to-database')
-def migrate_images_to_database():
-    """Migrate all external image URLs to database blobs.
-    This is an admin utility to convert legacy external URLs to database-stored images.
-    """
-    # Find all books with image_url but no image_data
-    books_to_migrate = Book.query.filter(
-        Book.image_url.isnot(None),
-        Book.image_data.is_(None)
-    ).all()
 
-    if not books_to_migrate:
-        flash('No external image URLs to migrate. All images already in database!', 'info')
-        return redirect(url_for('books.index'))
 
-    migrated = 0
-    failed = 0
-
-    for book in books_to_migrate:
-        if not book.image_url:
-            continue
-
-        try:
-            result = fetch_image_from_url(book.image_url)
-            if result:
-                image_data, content_type = result
-                if save_image_to_book(book, image_data, content_type):
-                    db.session.add(book)
-                    migrated += 1
-                else:
-                    failed += 1
-                    current_app.logger.warning(f'Failed to save image for book {book.id}')
-            else:
-                failed += 1
-                current_app.logger.warning(f'Failed to fetch image for book {book.id}: {book.image_url}')
-        except Exception as e:
-            failed += 1
-            current_app.logger.error(f'Error migrating image for book {book.id}: {e}')
-
-    # Commit all changes at once
+@bp.route('/highlights/<int:highlight_id>/toggle-hidden', methods=['POST'])
+def toggle_highlight_hidden(highlight_id: int):
+    """Toggle the hidden status of a highlight."""
+    highlight = Highlight.query.get_or_404(highlight_id)
+    highlight.hidden = not highlight.hidden
+    db.session.add(highlight)
     db.session.commit()
 
-    if migrated > 0:
-        flash(f'Successfully migrated {migrated} image(s) to database. {failed} failed.', 'success' if failed == 0 else 'warning')
-    else:
-        flash(f'Migration failed. Could not fetch any images.', 'danger')
+    action = 'hidden' if highlight.hidden else 'unhidden'
+    flash(f'Highlight {action} successfully', 'success')
 
-    return redirect(url_for('books.index'))
+    # Redirect back to the book detail page
+    return redirect(url_for('books.book_detail', book_id=highlight.book_id))

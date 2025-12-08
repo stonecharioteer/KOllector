@@ -53,6 +53,16 @@
           {% endif %}
         </a>
       </th>
+      <th style="width:180px">
+        <a href="?q={{ q }}&sort=updated&order={{ 'desc' if sort_by == 'updated' and sort_order == 'asc' else 'asc' }}" class="text-decoration-none text-dark">
+          Last Updated
+          {% if sort_by == 'updated' %}
+            <i class="fa-solid fa-sort-{{ 'down' if sort_order == 'desc' else 'up' }} ms-1"></i>
+          {% else %}
+            <i class="fa-solid fa-sort ms-1 text-muted"></i>
+          {% endif %}
+        </a>
+      </th>
       <th>Open Library</th>
       <th></th>
     </tr>
@@ -70,6 +80,7 @@
       </td>
       <td>{{ b.clean_authors or b.raw_authors }}</td>
       <td class="text-center"><span class="badge type-badge">{{ counts.get(b.id, 0) }}</span></td>
+      <td><code class="text-muted">{{ last_updated.get(b.id, '') or '' }}</code></td>
       <td>{% if b.goodreads_url %}<a href="{{ b.goodreads_url }}" target="_blank">Link</a>{% endif %}</td>
       <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('books.book_edit', book_id=b.id) }}">Edit</a></td>
     </tr>

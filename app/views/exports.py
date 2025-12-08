@@ -22,10 +22,12 @@ def template_new():
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         content = request.form.get('template_content', '').strip()
+        filename_template = request.form.get('filename_template', '').strip()
+        cover_filename_template = request.form.get('cover_filename_template', '').strip()
         is_default = request.form.get('is_default') == 'on'
 
-        if not name or not content:
-            flash('Template name and content are required.', 'danger')
+        if not name or not content or not filename_template or not cover_filename_template:
+            flash('Template name, content, and filename templates are required.', 'danger')
             return render_template('exports/template_edit.html', template=None)
 
         # Unset other defaults if this is default
@@ -35,6 +37,8 @@ def template_new():
         template = ExportTemplate(
             name=name,
             template_content=content,
+            filename_template=filename_template,
+            cover_filename_template=cover_filename_template,
             is_default=is_default
         )
         db.session.add(template)
@@ -53,10 +57,12 @@ def template_edit(template_id):
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         content = request.form.get('template_content', '').strip()
+        filename_template = request.form.get('filename_template', '').strip()
+        cover_filename_template = request.form.get('cover_filename_template', '').strip()
         is_default = request.form.get('is_default') == 'on'
 
-        if not name or not content:
-            flash('Template name and content are required.', 'danger')
+        if not name or not content or not filename_template or not cover_filename_template:
+            flash('Template name, content, and filename templates are required.', 'danger')
             return render_template('exports/template_edit.html', template=template)
 
         # Unset other defaults if this is default
@@ -65,6 +71,8 @@ def template_edit(template_id):
 
         template.name = name
         template.template_content = content
+        template.filename_template = filename_template
+        template.cover_filename_template = cover_filename_template
         template.is_default = is_default
         db.session.commit()
         flash(f'Template "{name}" updated successfully.', 'success')
@@ -120,37 +128,12 @@ def export_create(book_id):
     celery = make_celery(app)
     celery.send_task('tasks.export_highlights', args=[job_id])
 
-    # Redirect directly to job status page instead of using HTML in flash message
-    return redirect(url_for('exports.job_status', job_id=job_id))
+    # Redirect to unified jobs page
+    flash(f'Export job created successfully. Check the Jobs page for status.', 'success')
+    return redirect(url_for('jobs.index'))
 
 
-@bp.route('/jobs')
-def jobs():
-    """List all export jobs"""
-    jobs = ExportJob.query.order_by(ExportJob.created_at.desc()).limit(50).all()
-    return render_template('exports/jobs.html', jobs=jobs)
-
-
-@bp.route('/jobs/<job_id>')
-def job_status(job_id):
-    """Show status of specific export job"""
-    job = ExportJob.query.filter_by(job_id=job_id).first_or_404()
-    return render_template('exports/job_status.html', job=job)
-
-
-@bp.route('/jobs/<job_id>/status.json')
-def job_status_json(job_id):
-    """Get job status as JSON for polling"""
-    job = ExportJob.query.filter_by(job_id=job_id).first_or_404()
-    return jsonify({
-        'status': job.status,
-        'error_message': job.error_message,
-        'completed_at': job.completed_at.isoformat() if job.completed_at else None,
-        'download_url': url_for('exports.download', job_id=job_id) if job.status == 'completed' else None
-    })
-
-
-@bp.route('/jobs/<job_id>/download')
+@bp.route('/download/<job_id>')
 def download(job_id):
     """Download completed export zip file"""
     job = ExportJob.query.filter_by(job_id=job_id).first_or_404()
@@ -197,31 +180,4 @@ def job_delete(job_id):
     db.session.commit()
 
     flash(f'Export job for "{book_title}" deleted.', 'info')
-    return redirect(url_for('exports.jobs'))
-
-
-@bp.route('/jobs/delete-all', methods=['POST'])
-def jobs_delete_all():
-    """Delete all export jobs and their files"""
-    jobs = ExportJob.query.all()
-    deleted_files = 0
-    deleted_jobs = len(jobs)
-
-    # Delete all export files
-    for job in jobs:
-        if job.file_path:
-            from pathlib import Path
-            zip_path = Path(job.file_path)
-            if zip_path.exists():
-                try:
-                    zip_path.unlink()
-                    deleted_files += 1
-                except Exception as e:
-                    pass  # Continue with other files
-
-    # Delete all job records
-    ExportJob.query.delete()
-    db.session.commit()
-
-    flash(f'Deleted {deleted_jobs} export job(s) and {deleted_files} file(s).', 'success')
-    return redirect(url_for('exports.jobs'))
+    return redirect(url_for('jobs.index'))
