@@ -146,6 +146,13 @@
           <option value="all" {% if selected_type=='all' %}selected{% endif %}>All</option>
         </select>
       </div>
+      <div class="d-flex flex-column me-2">
+        <label class="form-label small mb-1">Show hidden</label>
+        <select name="show_hidden" class="form-select form-select-sm w-auto d-inline-block" onchange="this.form.submit()">
+          <option value="false" {% if not show_hidden %}selected{% endif %}>No</option>
+          <option value="true" {% if show_hidden %}selected{% endif %}>Yes</option>
+        </select>
+      </div>
       <div class="d-flex align-items-end">
         <a class="btn btn-outline-secondary btn-sm px-2 py-1" href="{{ url_for('books.book_detail', book_id=book.id) }}" title="Reset filters"><i class="fa-solid fa-rotate-left"></i></a>
       </div>
@@ -195,7 +202,10 @@
         </div>
 
         <div class="quote-card flex-grow-1">
-          <p class="quote-text">{{ h.text }}</p>
+          <p class="quote-text {% if h.hidden %}text-muted{% endif %}">
+            {% if h.hidden %}<i class="fa-solid fa-eye-slash me-1"></i>{% endif %}
+            {{ h.text }}
+          </p>
           <div class="quote-meta">
             <span>Page {{ h.page_number }}</span>
             {% if h.chapter %} • <span>{{ h.chapter }}</span>{% endif %}
@@ -205,6 +215,9 @@
               <span class="badge type-badge rounded-pill me-1">
                 {% if t == 'highlight_empty' %}Empty{% elif t == 'highlight_no_position' %}No Pos{% elif t == 'bookmark' %}Bookmark{% else %}Highlight{% endif %}
               </span>
+              {% if h.hidden %}
+                <span class="badge bg-secondary rounded-pill me-1">Hidden</span>
+              {% endif %}
             </span>
             <span class="quote-devices ms-1">
               {% if h.devices %}
@@ -218,6 +231,14 @@
               {% endif %}
             </span>
           </div>
+        </div>
+        <!-- Hide/Unhide button -->
+        <div class="ms-2">
+          <form method="post" action="{{ url_for('books.toggle_highlight_hidden', highlight_id=h.id) }}" style="display: inline;" onclick="event.stopPropagation();">
+            <button type="submit" class="btn btn-sm btn-outline-secondary" title="{% if h.hidden %}Unhide{% else %}Hide{% endif %} this highlight" onclick="event.stopPropagation();">
+              <i class="fa-solid {% if h.hidden %}fa-eye{% else %}fa-eye-slash{% endif %}"></i>
+            </button>
+          </form>
         </div>
       </div>
     </div>

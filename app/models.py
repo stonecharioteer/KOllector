@@ -44,6 +44,7 @@ class Highlight(db.Model, TimestampMixin):
     device_id = db.Column(db.String)
     page_xpath = db.Column(db.Text)
     kind = db.Column(db.String, default='highlight')  # highlight, bookmark, note, etc.
+    hidden = db.Column(db.Boolean, default=False, nullable=False, index=True)  # hide from UI
     devices = db.relationship('HighlightDevice', backref='highlight', cascade="all, delete-orphan")
 
 
@@ -106,7 +107,8 @@ class AppConfig(db.Model, TimestampMixin):
     goodreads_api_key = db.Column(db.Text, nullable=True)  # legacy, unused
     ol_app_name = db.Column(db.String(100), nullable=True)
     ol_contact_email = db.Column(db.String(200), nullable=True)
-    rustfs_url = db.Column(db.String(300), nullable=True)
+    rustfs_url = db.Column(db.String(300), nullable=True)  # deprecated, no longer used
+    scan_schedule = db.Column(db.String(100), nullable=True, default='*/15 * * * *')  # cron syntax, default: every 15 minutes
 
 
 class ExportTemplate(db.Model, TimestampMixin):

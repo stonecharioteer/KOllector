@@ -49,6 +49,26 @@
 
 <hr class="my-4">
 
+<h2 class="h5">Periodic Scanning</h2>
+<p class="text-muted small mb-2">Configure automatic highlight scanning using cron syntax. The default schedule is every 15 minutes (*/15 * * * *).</p>
+<form method="post" class="row g-2 mb-3" id="scan-schedule-form">
+  <div class="col-sm-6">
+    <input name="scan_schedule" id="scan-schedule-input" class="form-control" placeholder="*/15 * * * *" value="{{ cfg.scan_schedule or '*/15 * * * *' }}" required>
+    <small class="text-muted">Format: minute hour day month day_of_week</small>
+  </div>
+  <div class="col-sm-3 d-grid">
+    <button class="btn btn-primary" id="save-schedule-btn">Save Schedule</button>
+  </div>
+  <div class="col-sm-3">
+    <button type="button" class="btn btn-outline-secondary" id="validate-schedule-btn">Validate</button>
+  </div>
+  <div class="col-12">
+    <div id="schedule-validation" class="mt-2"></div>
+  </div>
+</form>
+
+<hr class="my-4">
+
 <h2 class="h5">Open Library</h2>
 <p class="text-muted small mb-2">Both fields are required to use Open Library features (search, metadata enrichment).</p>
 <form method="post" class="row g-2 mb-3">
@@ -92,6 +112,63 @@
     });
     // Initial suggestions for convenience
     updateSuggestions();
+  })();
+
+  // Cron validation
+  (function(){
+    const scheduleInput = document.getElementById('scan-schedule-input');
+    const validateBtn = document.getElementById('validate-schedule-btn');
+    const validationDiv = document.getElementById('schedule-validation');
+    const form = document.getElementById('scan-schedule-form');
+
+    function validateCronExpression() {
+      const expression = scheduleInput.value.trim();
+      if (!expression) {
+        validationDiv.innerHTML = '<div class="alert alert-danger">Cron expression cannot be empty</div>';
+        return;
+      }
+
+      validationDiv.innerHTML = '<div class="alert alert-info">Validating...</div>';
+
+      fetch(`/config/validate-cron?expression=${encodeURIComponent(expression)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.valid) {
+            const nextRuns = data.next_runs.map(t => `<li>${t}</li>`).join('');
+            validationDiv.innerHTML = `
+              <div class="alert alert-success">
+                <strong>Valid cron expression!</strong>
+                <p class="mb-1 mt-2">Next 3 scheduled runs:</p>
+                <ul class="mb-0">${nextRuns}</ul>
+              </div>
+            `;
+          } else {
+            validationDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+          }
+        })
+        .catch(err => {
+          validationDiv.innerHTML = '<div class="alert alert-danger">Failed to validate cron expression</div>';
+        });
+    }
+
+    validateBtn.addEventListener('click', validateCronExpression);
+
+    // Validate on input change with debounce
+    let validateTimer;
+    scheduleInput.addEventListener('input', function(){
+      clearTimeout(validateTimer);
+      validateTimer = setTimeout(validateCronExpression, 500);
+    });
+
+    // Validate on form submit
+    form.addEventListener('submit', function(e) {
+      const expression = scheduleInput.value.trim();
+      if (!expression) {
+        e.preventDefault();
+        validationDiv.innerHTML = '<div class="alert alert-danger">Cron expression cannot be empty</div>';
+        return false;
+      }
+    });
   })();
   </script>
 {% endblock %}

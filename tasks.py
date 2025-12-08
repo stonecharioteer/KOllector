@@ -134,11 +134,11 @@ def import_file(path: str, device_id: str = 'unknown'):
             continue
 
         if kind in {HighlightKind.highlight, HighlightKind.highlight_empty, HighlightKind.highlight_no_position}:
-            # Deduplicate by content within a book (ignore exact kind)
+            # Deduplicate by content within a book (ignore exact kind and page number)
+            # Page numbers can differ across devices/editions, so we dedupe by text only
             existing = Highlight.query.filter(
                 Highlight.book_id == book.id,
                 Highlight.text == (ann.text or ''),
-                Highlight.page_number == (ann.pageno or 0),
                 Highlight.kind.in_(['highlight', 'highlight_empty', 'highlight_no_position'])
             ).first()
             if existing:
@@ -154,6 +154,10 @@ def import_file(path: str, device_id: str = 'unknown'):
                     existing.page_xpath = ann.page
                 if not existing.color and ann.color:
                     existing.color = ann.color
+                # Update page_number only if existing is 0 and new is non-zero
+                # (prefer actual page numbers over missing ones)
+                if existing.page_number == 0 and ann.pageno and ann.pageno > 0:
+                    existing.page_number = ann.pageno
                 db.session.add(existing)
             else:
                 h = Highlight(

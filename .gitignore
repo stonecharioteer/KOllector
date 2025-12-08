@@ -30,5 +30,13 @@ Thumbs.db
 
 # Logs
 *.log
-sample-highlights/*
+
+# Highlights directory (typically a symlink to Syncthing folder)
+/highlights
+
+# Exports
 exports/*.zip
+
+# Celery
+celerybeat-schedule
+celerybeat.pid

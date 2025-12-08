@@ -47,13 +47,14 @@ def index():
     from sqlalchemy import func, case
 
     q = request.args.get('q', '').strip()
-    sort_by = request.args.get('sort', 'title').strip()
-    sort_order = request.args.get('order', 'asc').strip()
+    sort_by = request.args.get('sort', 'updated').strip()
+    sort_order = request.args.get('order', 'desc').strip()
 
-    # Base query with highlight counts
+    # Base query with highlight counts and last updated
     query = db.session.query(
         Book,
-        func.count(Highlight.id).label('highlight_count')
+        func.count(Highlight.id).label('highlight_count'),
+        func.max(Highlight.datetime).label('last_updated')
     ).outerjoin(
         Highlight,
         (Highlight.book_id == Book.id) &
@@ -83,6 +84,8 @@ def index():
         )
     elif sort_by == 'highlights':
         sort_col = func.count(Highlight.id)
+    elif sort_by == 'updated':
+        sort_col = func.max(Highlight.datetime)
     else:
         sort_col = Book.clean_title
 
@@ -93,8 +96,9 @@ def index():
 
     # Execute query
     results = query.limit(200).all()
-    books = [book for book, _ in results]
-    counts = {book.id: count for book, count in results}
+    books = [book for book, _, _ in results]
+    counts = {book.id: count for book, count, _ in results}
+    last_updated = {book.id: updated for book, _, updated in results}
     total_highlights = sum(counts.values())
 
     return render_template(
@@ -102,6 +106,7 @@ def index():
         books=books,
         q=q,
         counts=counts,
+        last_updated=last_updated,
         total_books=len(books),
         total_highlights=total_highlights,
         sort_by=sort_by,
@@ -122,9 +127,15 @@ def book_detail(book_id: int):
     # Filters
     kind_filter = request.args.get('type', 'highlight').strip() or 'highlight'
     device_filter = request.args.get('device', '').strip()
+    show_hidden = request.args.get('show_hidden', '').strip() == 'true'
 
     # Build query
     q = Highlight.query.filter(Highlight.book_id == book.id)
+
+    # Filter hidden highlights unless explicitly requested
+    if not show_hidden:
+        q = q.filter(Highlight.hidden == False)
+
     allowed_kinds = ['highlight', 'highlight_empty', 'highlight_no_position']
     if kind_filter == 'all':
         q = q.filter(Highlight.kind.in_(allowed_kinds))
@@ -175,6 +186,7 @@ def book_detail(book_id: int):
         devices=devices,
         selected_device=device_filter,
         selected_type=kind_filter,
+        show_hidden=show_hidden,
         ol_results=None
     )
 
@@ -603,3 +615,18 @@ def migrate_images_to_database():
         flash(f'Migration failed. Could not fetch any images.', 'danger')
 
     return redirect(url_for('books.index'))
+
+
+@bp.route('/highlights/<int:highlight_id>/toggle-hidden', methods=['POST'])
+def toggle_highlight_hidden(highlight_id: int):
+    """Toggle the hidden status of a highlight."""
+    highlight = Highlight.query.get_or_404(highlight_id)
+    highlight.hidden = not highlight.hidden
+    db.session.add(highlight)
+    db.session.commit()
+
+    action = 'hidden' if highlight.hidden else 'unhidden'
+    flash(f'Highlight {action} successfully', 'success')
+
+    # Redirect back to the book detail page
+    return redirect(url_for('books.book_detail', book_id=highlight.book_id))
