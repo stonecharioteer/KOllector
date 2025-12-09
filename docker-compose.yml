@@ -48,7 +48,7 @@ services:
       EXPORT_DIR: /data/exports
     volumes:
       - ./:/app
-      - ./sample-highlights:/data/highlights:ro
+      - ./highlights:/data/highlights:ro
       - ./exports:/data/exports
     depends_on:
       - db
@@ -66,7 +66,7 @@ services:
       EXPORT_DIR: /data/exports
     volumes:
       - ./:/app
-      - ./sample-highlights:/data/highlights:ro
+      - ./highlights:/data/highlights:ro
       - ./exports:/data/exports
     depends_on:
       - db
